@@ -9,7 +9,8 @@
 
 import { stockProfiles } from '../data/market'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const rawBackendUrl = import.meta.env.VITE_BACKEND_URL
+const BACKEND_URL = (rawBackendUrl && rawBackendUrl.trim() ? rawBackendUrl.trim() : 'http://localhost:8000').replace(/\/+$/, '')
 
 export const aiService = {
   /**
