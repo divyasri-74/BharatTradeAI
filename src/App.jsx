@@ -1,118 +1,202 @@
-import React, { useMemo, useState } from 'react'
-import {
-  Activity, ArrowDownRight, ArrowUpRight, Bell, Bot, BriefcaseBusiness, CandlestickChart,
-  Check, ChevronDown, CircleHelp, Clock3, Command, Compass, Filter, LayoutDashboard,
-  LineChart, ListFilter, Menu, MessageSquareText, Newspaper, Plus, Search, Settings,
-  ShieldCheck, Sparkles, TrendingDown, TrendingUp, Wallet, X, Zap
-} from 'lucide-react'
-import {
-  Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis
-} from 'recharts'
-import { indices, stocks, history, news, sectors } from './data/market'
-import { isSupabaseConfigured, supabase } from './lib/supabase'
+import React, { useState, useEffect } from 'react'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { ToastProvider, useToast } from './context/ToastContext'
+import { Sidebar } from './components/layout/Sidebar'
+import { Navbar } from './components/layout/Navbar'
+import { Dashboard } from './pages/Dashboard'
+import { StockAnalyzer } from './pages/StockAnalyzer'
+import { AIAnalyst } from './pages/AIAnalyst'
+import { NewsPage } from './pages/News'
+import { Screener } from './pages/Screener'
+import { Watchlist } from './pages/Watchlist'
+import { PaperTrading } from './pages/PaperTrading'
+import { AuthModal } from './components/auth/AuthModal'
+import { OrderModal } from './components/trading/OrderModal'
+import { watchlistService } from './services/watchlistService'
+import { stockProfiles } from './data/market'
 
-const money = n => new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', maximumFractionDigits:2 }).format(n)
-const cn = (...v) => v.filter(Boolean).join(' ')
+function MainLayout() {
+  const [page, setPage] = useState('dashboard')
+  const [selectedStock, setSelectedStock] = useState(stockProfiles[0])
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [authModalOpen, setAuthModalOpen] = useState(false)
+  const [tradingStock, setTradingStock] = useState(null)
+  const [aiInitialPrompt, setAiInitialPrompt] = useState('')
+  const [watchlist, setWatchlist] = useState([])
+  const { user } = useAuth()
+  const { showToast } = useToast()
 
-function Signal({ value }) {
-  const styles = value === 'Bullish' ? 'text-mint bg-mint/10 border-mint/20' : value === 'Bearish' ? 'text-danger bg-danger/10 border-danger/20' : 'text-gold bg-gold/10 border-gold/20'
-  return <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${styles}`}>{value}</span>
-}
-function SectionTitle({ eyebrow, title, action }) {
-  return <div className="mb-4 flex items-end justify-between gap-3"><div><p className="mb-1 text-[10px] font-bold uppercase tracking-[.2em] text-mint">{eyebrow}</p><h2 className="text-lg font-semibold text-white">{title}</h2></div>{action}</div>
-}
-function StatCard({ item }) {
-  return <div className="card p-4"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-muted">{item.name}</span><span className="rounded-lg bg-white/5 p-2 text-muted"><Activity size={15}/></span></div><div className="mt-3 flex items-baseline gap-2"><span className="text-2xl font-semibold tracking-tight">{item.value}</span></div><div className="mt-2 flex items-center gap-1 text-xs"><span className={item.positive ? 'text-mint' : 'text-danger'}>{item.positive ? <ArrowUpRight size={14}/> : <ArrowDownRight size={14}/>}</span><span className={item.positive ? 'text-mint' : 'text-danger'}>{item.change}</span><span className="text-muted">today</span></div><p className="mt-3 text-[9px] tracking-[.16em] text-slate-600">{item.sub}</p></div>
-}
-function Dashboard({ setPage, onAnalyze }) {
-  const [period, setPeriod] = useState('1D')
-  return <div className="space-y-7">
-    <div className="grid-bg relative overflow-hidden rounded-3xl border border-line bg-gradient-to-br from-[#14283a] via-panel to-panel p-6 md:p-8">
-      <div className="absolute -right-10 -top-24 h-72 w-72 rounded-full bg-mint/10 blur-3xl"/>
-      <div className="relative max-w-2xl"><div className="mb-4 inline-flex items-center gap-2 rounded-full border border-mint/20 bg-mint/10 px-3 py-1 text-[11px] text-mint"><span className="h-1.5 w-1.5 rounded-full bg-mint"/> YOUR MARKET RESEARCH WORKSPACE</div>
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight md:text-4xl">See the market.<br/><span className="text-mint">Understand the signal.</span></h1>
-        <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">Explore Indian equities with technical indicators, market context and AI-assisted explanations — all in one workspace.</p>
-        <div className="mt-6 flex flex-wrap gap-3"><button className="btn btn-primary" onClick={() => setPage('analyzer')}><CandlestickChart size={16}/> Analyse a stock</button><button className="btn btn-secondary" onClick={() => setPage('paper')}><Wallet size={16}/> Try paper trading</button></div>
+  // Load watchlist on mount and auth state change
+  useEffect(() => {
+    watchlistService.getWatchlist(user).then(setWatchlist)
+  }, [user])
+
+  const titles = {
+    dashboard: 'Market Overview',
+    analyzer: 'Stock Technical Analyzer',
+    analyst: 'Bharat AI Market Analyst',
+    news: 'Indian News & Sentiment',
+    screener: 'Indian Equities Screener',
+    watchlist: 'My Watchlist',
+    paper: 'Virtual Paper Trading'
+  }
+
+  const navigateTo = (targetPage) => {
+    setPage(targetPage)
+    setMobileOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleSelectStock = (stock) => {
+    const fullStock = stockProfiles.find(s => s.symbol.toUpperCase() === stock.symbol.toUpperCase()) || stock
+    setSelectedStock(fullStock)
+    setPage('analyzer')
+    setMobileOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleTradeStock = (stock) => {
+    const fullStock = stockProfiles.find(s => s.symbol.toUpperCase() === stock.symbol.toUpperCase()) || stock
+    setTradingStock(fullStock)
+  }
+
+  const handleToggleWatch = async (stock) => {
+    const isAlready = watchlistService.isWatched(stock.symbol, watchlist)
+    let updated = []
+    if (isAlready) {
+      updated = await watchlistService.removeStock(stock.symbol, user)
+      showToast(`Removed ${stock.symbol} from watchlist.`, 'info')
+    } else {
+      updated = await watchlistService.addStock(stock, user)
+      showToast(`Added ${stock.symbol} to watchlist.`, 'success')
+    }
+    setWatchlist(updated)
+  }
+
+  const handleAskAI = (promptText) => {
+    setAiInitialPrompt(promptText)
+    setPage('analyst')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const isWatched = (sym) => watchlistService.isWatched(sym, watchlist)
+
+  return (
+    <div className="min-h-screen bg-ink text-slate-100 flex flex-col">
+      {/* Sidebar Navigation */}
+      <Sidebar
+        page={page}
+        onNavigate={navigateTo}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
+        watchlistCount={watchlist.length}
+      />
+
+      {/* Main Content Area */}
+      <div className="flex-1 lg:pl-64 flex flex-col">
+        {/* Sticky Header Navbar */}
+        <Navbar
+          title={titles[page]}
+          onOpenSidebar={() => setMobileOpen(true)}
+          onOpenAuth={() => setAuthModalOpen(true)}
+        />
+
+        {/* Dynamic Page Views */}
+        <main className="flex-1 mx-auto max-w-[1500px] w-full p-4 md:p-8">
+          {page === 'dashboard' && (
+            <Dashboard
+              onNavigate={navigateTo}
+              onSelectStock={handleSelectStock}
+              onTradeStock={handleTradeStock}
+              onToggleWatch={handleToggleWatch}
+              isWatched={isWatched}
+            />
+          )}
+
+          {page === 'analyzer' && (
+            <StockAnalyzer
+              selectedStock={selectedStock}
+              onSelectStock={handleSelectStock}
+              onTrade={handleTradeStock}
+              onToggleWatch={handleToggleWatch}
+              isWatched={isWatched}
+              onAskAI={handleAskAI}
+            />
+          )}
+
+          {page === 'analyst' && (
+            <AIAnalyst
+              initialPrompt={aiInitialPrompt}
+              initialSymbol={selectedStock?.symbol}
+            />
+          )}
+
+          {page === 'news' && (
+            <NewsPage onSelectStock={handleSelectStock} />
+          )}
+
+          {page === 'screener' && (
+            <Screener
+              onSelectStock={handleSelectStock}
+              onTrade={handleTradeStock}
+              onToggleWatch={handleToggleWatch}
+              isWatched={isWatched}
+            />
+          )}
+
+          {page === 'watchlist' && (
+            <Watchlist
+              watchlist={watchlist}
+              onRemove={(sym) => handleToggleWatch({ symbol: sym })}
+              onSelectStock={handleSelectStock}
+              onTrade={handleTradeStock}
+              onNavigate={navigateTo}
+            />
+          )}
+
+          {page === 'paper' && (
+            <PaperTrading
+              onSelectStock={handleSelectStock}
+              onTradeStock={handleTradeStock}
+            />
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="mt-auto border-t border-line py-6 text-center text-xs text-slate-500">
+          <p className="font-medium text-slate-400">
+            BharatTrade AI — Next-Generation Indian Equities Market Intelligence & Paper Simulation
+          </p>
+          <p className="mt-1 text-[11px] text-slate-600 max-w-xl mx-auto px-4">
+            Educational research platform. Demo prices and simulated technical indicators are for analytical practice only. Not registered investment advice.
+          </p>
+        </footer>
       </div>
-      <div className="absolute bottom-5 right-6 hidden text-right lg:block"><p className="text-[10px] tracking-widest text-slate-500">PLATFORM MODE</p><p className="mt-1 text-sm font-semibold text-gold">DEMO DATA</p><p className="text-xs text-slate-500">Not connected to a live feed</p></div>
+
+      {/* Global Modals */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+      />
+
+      <OrderModal
+        isOpen={Boolean(tradingStock)}
+        onClose={() => setTradingStock(null)}
+        stock={tradingStock}
+        onOrderExecuted={() => {
+          // Trigger updates if necessary
+        }}
+      />
     </div>
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-semibold">Market overview</h2><p className="mt-1 text-xs text-muted">Illustrative values for interface demonstration</p></div><span className="rounded-lg border border-gold/20 bg-gold/10 px-2.5 py-1 text-[10px] font-bold tracking-wide text-gold">DEMO SNAPSHOT</span></div>
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{indices.map(i => <StatCard key={i.name} item={i}/>)}</div>
-    <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-      <div className="card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-muted">NIFTY 50 · DEMO INTRADAY</p><div className="mt-1 flex items-baseline gap-2"><span className="text-2xl font-semibold">24,812.35</span><span className="text-xs text-mint">+0.62%</span></div></div><div className="flex gap-1 rounded-xl bg-[#0b1320] p-1">{['1D','1W','1M','1Y'].map(p=><button key={p} onClick={()=>setPeriod(p)} className={cn('rounded-lg px-3 py-1.5 text-xs',period===p?'bg-mint text-ink':'text-muted hover:text-white')}>{p}</button>)}</div></div>
-        <div className="mt-5 h-56"><ResponsiveContainer width="100%" height="100%"><AreaChart data={history}><defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#37d6a0" stopOpacity={.28}/><stop offset="95%" stopColor="#37d6a0" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#263349" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="day" tick={{fill:'#71819a',fontSize:10}} axisLine={false} tickLine={false}/><YAxis domain={['dataMin - 60','dataMax + 40']} tick={{fill:'#71819a',fontSize:10}} axisLine={false} tickLine={false} width={48}/><Tooltip contentStyle={{background:'#111a2a',border:'1px solid #263349',borderRadius:12,color:'#fff'}}/><Area type="monotone" dataKey="price" stroke="#37d6a0" strokeWidth={2.5} fill="url(#chartFill)" /></AreaChart></ResponsiveContainer></div>
-        <p className="mt-2 text-[10px] text-slate-600">Illustrative chart series · not actual exchange data</p>
-      </div>
-      <div className="card p-5"><SectionTitle eyebrow="AI BRIEFING" title="Market pulse" action={<span className="rounded-lg bg-mint/10 p-2 text-mint"><Sparkles size={16}/></span>}/><div className="rounded-xl border border-mint/15 bg-mint/[.06] p-4"><div className="flex items-center gap-2 text-sm font-semibold text-mint"><Activity size={16}/> Mixed-to-positive demo snapshot</div><p className="mt-2 text-xs leading-5 text-slate-400">The sample dataset shows strength in IT and pharma, while banking and auto are comparatively softer. This is a demonstration summary, not a current market assessment.</p></div><div className="mt-4 space-y-3">{[{t:'What to watch',d:'Compare sector breadth with index movement.'},{t:'Risk context',d:'Check volatility and news before interpreting a signal.'},{t:'Next step',d:'Open the stock analyzer for indicator-level detail.'}].map(x=><div key={x.t} className="flex gap-3"><span className="mt-1 h-1.5 w-1.5 rounded-full bg-mint"/><div><p className="text-xs font-semibold">{x.t}</p><p className="mt-1 text-xs text-muted">{x.d}</p></div></div>)}</div><button className="btn btn-secondary mt-5 w-full" onClick={()=>setPage('analyst')}>Open AI market analyst <ArrowUpRight size={14}/></button></div>
-    </div>
-    <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-      <div className="card p-5"><SectionTitle eyebrow="MARKET MOVERS" title="Stocks to watch" action={<button onClick={()=>setPage('screener')} className="text-xs text-mint">View screener →</button>}/><StockTable rows={stocks.slice(0,5)} onAnalyze={onAnalyze}/></div>
-      <div className="card p-5"><SectionTitle eyebrow="SECTOR SNAPSHOT" title="Sector performance"/><div className="space-y-4">{sectors.map(s=><div key={s.name}><div className="mb-1.5 flex justify-between text-xs"><span className="text-slate-300">{s.name}</span><span className={s.value>=0?'text-mint':'text-danger'}>{s.value>0?'+':''}{s.value.toFixed(1)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-[#0a1220]"><div className={cn('h-full rounded-full',s.value>=0?'bg-mint':'bg-danger')} style={{width:`${Math.min(Math.abs(s.value)*35,100)}%`}}/></div></div>)}</div><p className="mt-4 text-[10px] text-slate-600">Illustrative sector values only.</p></div>
-    </div>
-  </div>
+  )
 }
-function StockTable({ rows, onAnalyze, addWatch }) {
-  return <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left"><thead><tr className="border-b border-line text-[10px] uppercase tracking-wider text-slate-500"><th className="pb-3 font-medium">Company</th><th className="pb-3 font-medium">Price</th><th className="pb-3 font-medium">Change</th><th className="pb-3 font-medium">RSI</th><th className="pb-3 font-medium">Signal</th><th className="pb-3"/></tr></thead><tbody>{rows.map(s=><tr key={s.symbol} className="border-b border-line/60 last:border-0"><td className="py-3"><button onClick={()=>onAnalyze(s)} className="text-left"><p className="text-xs font-semibold text-white hover:text-mint">{s.symbol}</p><p className="mt-1 text-[10px] text-muted">{s.name}</p></button></td><td className="py-3 text-xs">{money(s.price)}</td><td className={cn('py-3 text-xs font-medium',s.change>=0?'text-mint':'text-danger')}>{s.change>0?'+':''}{s.change.toFixed(2)}%</td><td className="py-3 text-xs text-slate-300">{s.rsi}</td><td className="py-3"><Signal value={s.signal}/></td><td className="py-3 text-right"><button onClick={()=>addWatch?.(s)} title="Add to watchlist" className="rounded-lg p-2 text-muted hover:bg-white/5 hover:text-mint"><Plus size={14}/></button></td></tr>)}</tbody></table></div>
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <ToastProvider>
+        <MainLayout />
+      </ToastProvider>
+    </AuthProvider>
+  )
 }
-function Analyzer({ selected, onWatch }) {
-  const [query,setQuery]=useState(selected?.symbol||'RELIANCE')
-  const stock=stocks.find(s=>s.symbol===query.toUpperCase())||stocks[0]
-  return <div className="space-y-5"><SectionTitle eyebrow="EQUITY RESEARCH" title="Stock analyzer"/><div className="card flex flex-col gap-3 p-4 md:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-3 text-muted" size={16}/><input className="field pl-10" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search NSE symbol e.g. RELIANCE"/></div><button className="btn btn-primary" onClick={()=>setQuery(stock.symbol)}>Analyse stock <ArrowUpRight size={15}/></button></div><div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]"><div className="card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs text-muted">{stock.name} · NSE DEMO</p><h2 className="mt-1 text-3xl font-semibold">{money(stock.price)}</h2><p className={cn('mt-1 text-xs',stock.change>=0?'text-mint':'text-danger')}>{stock.change>0?'+':''}{stock.change}% today</p></div><button className="btn btn-secondary" onClick={()=>onWatch(stock)}><Plus size={15}/> Watchlist</button></div><div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">{[['RSI (14)',stock.rsi],['MACD','+12.4'],['SMA 20',money(stock.price*.985)],['SMA 50',money(stock.price*.968)]].map(([k,v])=><div key={k} className="rounded-xl bg-[#0b1320] p-3"><p className="text-[10px] text-muted">{k}</p><p className="mt-1 text-sm font-semibold">{v}</p></div>)}</div><div className="mt-5 rounded-xl border border-line p-4"><p className="text-xs font-semibold">Technical interpretation</p><div className="mt-3 flex items-center justify-between"><span className="text-sm text-muted">Rules-based sample signal</span><Signal value={stock.signal}/></div><p className="mt-3 text-xs leading-5 text-slate-400">This sample signal is illustrative. In production, calculate indicators from a validated historical OHLCV series and show the formula, timestamp and data source.</p></div></div><div className="card p-5"><SectionTitle eyebrow="ANALYST NOTES" title="What the indicators mean"/><div className="space-y-4">{[['RSI','Momentum indicator. Common reference levels are 30 and 70.'],['MACD','Momentum and trend-following indicator based on moving averages.'],['Moving averages','Help compare short-term and longer-term price direction.'],['Volume','Can help assess participation behind a price move.']].map(([a,b])=><div key={a}><p className="text-xs font-semibold text-white">{a}</p><p className="mt-1 text-xs leading-5 text-muted">{b}</p></div>)}</div><div className="mt-5 rounded-xl border border-gold/20 bg-gold/5 p-3 text-xs leading-5 text-gold">Demo mode: the figures shown here are sample values and must not be used to make investment decisions.</div></div></div></div>
-}
-function Analyst() {
-  const [question,setQuestion]=useState('')
-  const [answer,setAnswer]=useState('')
-  const [busy,setBusy]=useState(false)
-  const ask=()=>{if(!question.trim())return;setBusy(true);setAnswer('');setTimeout(()=>{setAnswer('In this demo, I can explain market concepts and the sample dashboard data. To produce stock-specific, evidence-based answers, connect a licensed market-data source and configure a server-side Gemini or OpenAI integration. Always check the data timestamp and original sources before acting.');setBusy(false)},650)}
-  return <div className="mx-auto max-w-4xl space-y-5"><SectionTitle eyebrow="GENERATIVE AI" title="AI market analyst"/><div className="card grid-bg p-6 md:p-8"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-mint/20 bg-mint/10 text-mint"><Bot size={27}/></div><h2 className="mt-4 text-center text-2xl font-semibold">Ask Bharat AI</h2><p className="mx-auto mt-2 max-w-lg text-center text-sm leading-6 text-muted">Explore market concepts, interpret technical indicators and understand what to investigate next.</p><div className="mt-7 grid gap-2 sm:grid-cols-2">{['What does RSI tell me?','How do moving averages work?','What is market breadth?','How should I assess news sentiment?'].map(q=><button key={q} onClick={()=>setQuestion(q)} className="rounded-xl border border-line bg-panel p-3 text-left text-xs text-slate-300 hover:border-mint/40">{q}<ArrowUpRight className="float-right text-muted" size={14}/></button>)}</div><div className="mt-6 flex flex-col gap-2 sm:flex-row"><input className="field" value={question} onChange={e=>setQuestion(e.target.value)} onKeyDown={e=>e.key==='Enter'&&ask()} placeholder="Ask about Indian markets..."/><button className="btn btn-primary" onClick={ask} disabled={busy}>{busy?'Thinking...':<>Ask AI <Sparkles size={15}/></>}</button></div>{answer&&<div className="mt-5 rounded-xl border border-mint/20 bg-mint/[.06] p-4"><p className="mb-2 flex items-center gap-2 text-xs font-semibold text-mint"><Sparkles size={14}/> Demo assistant response</p><p className="text-sm leading-6 text-slate-300">{answer}</p></div>}<p className="mt-4 text-center text-[10px] text-slate-600">This starter UI uses a demo response, not a live LLM connection.</p></div><div className="card p-5"><h3 className="text-sm font-semibold">Production AI integration checklist</h3><ul className="mt-3 space-y-2 text-xs text-muted">{['Create a Supabase Edge Function or secure backend endpoint.','Keep the Gemini/OpenAI API key on the server only.','Pass verified indicator values and article references to the model.','Validate structured output and show source timestamps.'].map(x=><li className="flex gap-2" key={x}><Check size={14} className="shrink-0 text-mint"/>{x}</li>)}</ul></div></div>
-}
-function NewsPage() {
-  return <div className="space-y-5"><SectionTitle eyebrow="FINANCIAL INTELLIGENCE" title="News & sentiment"/><div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-xs text-gold">Sample news cards for UI demonstration. Connect a licensed news provider before publishing real headlines.</div><div className="grid gap-3">{news.map((n,i)=><article key={n.title} className="card p-5"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[10px] uppercase tracking-wider text-muted">{n.source} · {n.time}</span><span className={cn('rounded-full px-2.5 py-1 text-xs',n.tone==='green'?'bg-mint/10 text-mint':n.tone==='red'?'bg-danger/10 text-danger':'bg-gold/10 text-gold')}>{n.sentiment}</span></div><h3 className="mt-3 text-base font-semibold">{n.title}</h3><p className="mt-2 text-sm leading-6 text-muted">{n.summary}</p><p className="mt-3 text-[10px] text-slate-600">Demo article {i+1} · No external article link supplied</p></article>)}</div></div>
-}
-function Screener({ onAnalyze, addWatch }) {
-  const [signal,setSignal]=useState('All')
-  const [sector,setSector]=useState('All')
-  const [minRsi,setMinRsi]=useState('')
-  const filtered=stocks.filter(s=>(signal==='All'||s.signal===signal)&&(sector==='All'||s.sector===sector)&&(minRsi===''||s.rsi<=Number(minRsi)))
-  return <div className="space-y-5"><SectionTitle eyebrow="DISCOVERY TOOLS" title="Stock screener"/><div className="card grid gap-3 p-4 md:grid-cols-3"><label className="text-xs text-muted">Technical signal<select className="field mt-2" value={signal} onChange={e=>setSignal(e.target.value)}>{['All','Bullish','Bearish','Neutral'].map(x=><option>{x}</option>)}</select></label><label className="text-xs text-muted">Sector<select className="field mt-2" value={sector} onChange={e=>setSector(e.target.value)}>{['All',...new Set(stocks.map(s=>s.sector))].map(x=><option>{x}</option>)}</select></label><label className="text-xs text-muted">RSI less than or equal to<input className="field mt-2" type="number" min="0" max="100" value={minRsi} onChange={e=>setMinRsi(e.target.value)} placeholder="e.g. 40"/></label></div><div className="card p-5"><div className="mb-4 flex justify-between"><p className="text-sm font-semibold">Matching stocks</p><span className="text-xs text-muted">{filtered.length} results · demo universe</span></div><StockTable rows={filtered} onAnalyze={onAnalyze} addWatch={addWatch}/></div></div>
-}
-function Watchlist({ watch, onAnalyze, remove }) {
-  return <div className="space-y-5"><SectionTitle eyebrow="PERSONAL WORKSPACE" title="My watchlist"/><div className="card p-5">{watch.length?<div className="space-y-3">{watch.map(s=><div key={s.symbol} className="flex items-center justify-between gap-3 rounded-xl border border-line p-3"><button onClick={()=>onAnalyze(s)} className="text-left"><p className="text-sm font-semibold">{s.symbol}</p><p className="text-xs text-muted">{s.name}</p></button><div className="text-right"><p className="text-sm">{money(s.price)}</p><p className={cn('text-xs',s.change>=0?'text-mint':'text-danger')}>{s.change>0?'+':''}{s.change}%</p></div><button onClick={()=>remove(s.symbol)} className="rounded-lg p-2 text-muted hover:bg-danger/10 hover:text-danger"><X size={15}/></button></div>)}</div>:<div className="py-12 text-center"><ListFilter className="mx-auto text-muted" size={28}/><p className="mt-3 text-sm font-semibold">Your watchlist is empty</p><p className="mt-1 text-xs text-muted">Add stocks from the dashboard or screener.</p></div>}</div></div>
-}
-function PaperTrading() {
-  const [cash,setCash]=useState(100000)
-  const [holdings,setHoldings]=useState({})
-  const [symbol,setSymbol]=useState('RELIANCE')
-  const [qty,setQty]=useState(1)
-  const [message,setMessage]=useState('')
-  const [orders,setOrders]=useState([])
-  const stock=stocks.find(s=>s.symbol===symbol)||stocks[0]
-  const buy=()=>{const q=Math.max(1,Number(qty)||1),cost=q*stock.price;if(cost>cash){setMessage('Insufficient virtual cash balance.');return}setCash(c=>c-cost);setHoldings(h=>({...h,[stock.symbol]:(h[stock.symbol]||0)+q}));setOrders(o=>[{id:Date.now(),side:'BUY',symbol:stock.symbol,qty:q,price:stock.price},...o]);setMessage(`Virtual buy order completed for ${q} ${stock.symbol}.`)}
-  const sell=()=>{const q=Math.max(1,Number(qty)||1),owned=holdings[stock.symbol]||0;if(q>owned){setMessage('You do not have enough virtual holdings to sell.');return}setCash(c=>c+q*stock.price);setHoldings(h=>({...h,[stock.symbol]:h[stock.symbol]-q}));setOrders(o=>[{id:Date.now(),side:'SELL',symbol:stock.symbol,qty:q,price:stock.price},...o]);setMessage(`Virtual sell order completed for ${q} ${stock.symbol}.`)}
-  const invested=Object.entries(holdings).reduce((sum,[sym,q])=>sum+(stocks.find(s=>s.symbol===sym)?.price||0)*q,0)
-  return <div className="space-y-5"><SectionTitle eyebrow="RISK-FREE PRACTICE" title="Paper trading"/><div className="rounded-xl border border-gold/20 bg-gold/5 p-3 text-xs text-gold">Simulation only. No real orders are placed and demo prices are not live market quotes.</div><div className="grid gap-3 sm:grid-cols-3">{[['Virtual cash',money(cash)],['Holdings value',money(invested)],['Portfolio value',money(cash+invested)]].map(([a,b])=><div className="card p-4" key={a}><p className="text-xs text-muted">{a}</p><p className="mt-2 text-xl font-semibold">{b}</p></div>)}</div><div className="grid gap-4 xl:grid-cols-[.9fr_1.1fr]"><div className="card p-5"><h3 className="font-semibold">Place virtual order</h3><label className="mt-4 block text-xs text-muted">Stock<select className="field mt-2" value={symbol} onChange={e=>setSymbol(e.target.value)}>{stocks.map(s=><option value={s.symbol}>{s.symbol} — {s.name}</option>)}</select></label><label className="mt-3 block text-xs text-muted">Quantity<input className="field mt-2" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/></label><div className="mt-4 rounded-xl bg-[#0b1320] p-3 text-xs"><div className="flex justify-between"><span className="text-muted">Demo price</span><span>{money(stock.price)}</span></div><div className="mt-2 flex justify-between"><span className="text-muted">Estimated order value</span><span className="font-semibold">{money(stock.price*Math.max(1,Number(qty)||1))}</span></div></div><div className="mt-4 grid grid-cols-2 gap-2"><button className="btn btn-primary" onClick={buy}>Buy virtually</button><button className="btn btn-secondary" onClick={sell}>Sell virtually</button></div>{message&&<p className="mt-3 text-xs text-muted">{message}</p>}</div><div className="card p-5"><h3 className="font-semibold">Your holdings</h3>{Object.entries(holdings).filter(([,q])=>q>0).length?<div className="mt-4 space-y-3">{Object.entries(holdings).filter(([,q])=>q>0).map(([sym,q])=><div key={sym} className="flex justify-between border-b border-line pb-3 text-sm"><span>{sym}</span><span>{q} shares</span><span>{money(q*(stocks.find(s=>s.symbol===sym)?.price||0))}</span></div>)}</div>:<p className="mt-8 text-center text-sm text-muted">No holdings yet. Place a virtual buy order to get started.</p>}</div></div><div className="card p-5"><h3 className="font-semibold">Order history</h3>{orders.length?<div className="mt-3 space-y-2">{orders.map(o=><div key={o.id} className="flex flex-wrap justify-between gap-2 border-b border-line py-2 text-xs"><span className={o.side==='BUY'?'text-mint':'text-danger'}>{o.side}</span><span>{o.symbol}</span><span>{o.qty} shares</span><span>{money(o.price)}</span><span className="text-muted">Simulated</span></div>)}</div>:<p className="mt-3 text-xs text-muted">No virtual orders placed yet.</p>}</div></div>
-}
-function App() {
-  const [page,setPage]=useState('dashboard')
-  const [selected,setSelected]=useState(stocks[0])
-  const [watch,setWatch]=useState([stocks[0],stocks[2]])
-  const [mobileOpen,setMobileOpen]=useState(false)
-  const addWatch=s=>setWatch(w=>w.some(x=>x.symbol===s.symbol)?w:[...w,s])
-  const nav=[['dashboard','Overview',LayoutDashboard],['analyzer','Stock analyzer',CandlestickChart],['analyst','AI analyst',Bot],['news','News & sentiment',Newspaper],['screener','Stock screener',Filter],['watchlist','Watchlist',ListFilter],['paper','Paper trading',Wallet]]
-  const titles={dashboard:'Overview',analyzer:'Stock analyzer',analyst:'AI market analyst',news:'News & sentiment',screener:'Stock screener',watchlist:'My watchlist',paper:'Paper trading'}
-  const navigate=p=>{setPage(p);setMobileOpen(false)}
-  const openStock=s=>{setSelected(s);setPage('analyzer')}
-  const content=page==='dashboard'?<Dashboard setPage={navigate} onAnalyze={openStock}/>:page==='analyzer'?<Analyzer selected={selected} onWatch={addWatch}/>:page==='analyst'?<Analyst/>:page==='news'?<NewsPage/>:page==='screener'?<Screener onAnalyze={openStock} addWatch={addWatch}/>:page==='watchlist'?<Watchlist watch={watch} onAnalyze={openStock} remove={sym=>setWatch(w=>w.filter(s=>s.symbol!==sym))}/>:<PaperTrading/>
-  return <div className="min-h-screen bg-ink">
-    <aside className={cn('fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-line bg-[#0c1422] transition-transform lg:translate-x-0',mobileOpen?'translate-x-0':'-translate-x-full')}>
-      <div className="flex h-[76px] items-center gap-3 border-b border-line px-5"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-mint text-ink"><CandlestickChart size={22}/></div><div><p className="font-semibold tracking-tight">BharatTrade <span className="text-mint">AI</span></p><p className="text-[9px] tracking-[.2em] text-muted">MARKET INTELLIGENCE</p></div><button className="ml-auto text-muted lg:hidden" onClick={()=>setMobileOpen(false)}><X size={18}/></button></div>
-      <div className="px-4 pt-6"><p className="mb-3 px-2 text-[9px] font-bold tracking-[.2em] text-slate-600">WORKSPACE</p><nav className="space-y-1">{nav.map(([id,label,Icon])=><button key={id} onClick={()=>navigate(id)} className={cn('flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-xs font-medium transition',page===id?'bg-mint/10 text-mint':'text-slate-400 hover:bg-white/5 hover:text-white')}><Icon size={16}/>{label}{id==='watchlist'&&<span className="ml-auto rounded-md bg-white/5 px-1.5 py-0.5 text-[10px]">{watch.length}</span>}</button>)}</nav></div>
-      <div className="mt-auto p-4"><div className="rounded-xl border border-mint/15 bg-mint/[.06] p-3"><div className="flex items-center gap-2 text-xs font-semibold text-mint"><ShieldCheck size={14}/> Paper mode enabled</div><p className="mt-2 text-[10px] leading-4 text-muted">No real-money trades. Market values are demo data.</p></div><div className="mt-4 flex items-center gap-2 px-2 text-[10px] text-slate-600"><CircleHelp size={13}/> BharatTrade AI · v1.0.0</div></div>
-    </aside>
-    {mobileOpen&&<button aria-label="Close menu" onClick={()=>setMobileOpen(false)} className="fixed inset-0 z-30 bg-black/60 lg:hidden"/>}
-    <main className="min-h-screen lg:pl-64"><header className="sticky top-0 z-20 flex h-[76px] items-center justify-between border-b border-line bg-ink/90 px-4 backdrop-blur-xl md:px-8"><div className="flex items-center gap-3"><button className="text-muted lg:hidden" onClick={()=>setMobileOpen(true)}><Menu size={20}/></button><div><p className="text-sm font-semibold">{titles[page]}</p><p className="mt-0.5 text-[10px] text-muted">Indian equities research workspace</p></div></div><div className="flex items-center gap-2"><span className="hidden items-center gap-1.5 rounded-lg border border-gold/20 bg-gold/5 px-2.5 py-1.5 text-[10px] font-semibold text-gold sm:flex"><span className="h-1.5 w-1.5 rounded-full bg-gold"/> DEMO DATA</span><button className="rounded-xl border border-line p-2 text-muted hover:text-white" title="Notifications"><Bell size={16}/></button><div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1c3344] text-xs font-semibold text-mint">BT</div></div></header>
-      <div className="mx-auto max-w-[1500px] p-4 md:p-8">{content}<footer className="mt-10 border-t border-line py-5 text-center text-[10px] leading-5 text-slate-600">BharatTrade AI is an educational market-research and paper-trading starter. Demo values are illustrative, not live data or investment advice.</footer></div>
-    </main>
-  </div>
-}
-export default App
